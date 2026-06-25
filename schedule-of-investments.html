@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Schedule of Investments — Benchmark Funds</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #f4f6f9; color: #1a2233;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 28px 24px 56px; }
+  .head h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .head .sub { color: #5b6678; font-size: 13px; }
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 22px 0 8px; }
+  .tile {
+    background: #fff; border: 1px solid #e3e8ef; border-radius: 12px; padding: 16px 18px;
+    box-shadow: 0 1px 2px rgba(16,24,40,.04);
+  }
+  .tile .label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #6b7689; font-weight: 600; }
+  .tile .value { font-size: 26px; font-weight: 700; margin-top: 6px; letter-spacing: -0.02em; }
+  .tile .note { font-size: 11px; color: #8a93a4; margin-top: 4px; }
+  .pos { color: #0a7d4d; } .neg { color: #c0392b; }
+  .panel { background: #fff; border: 1px solid #e3e8ef; border-radius: 12px; margin-top: 22px; overflow: hidden; }
+  .panel .ptitle { padding: 14px 18px; border-bottom: 1px solid #eef1f5; font-weight: 600; font-size: 14px;
+    display: flex; justify-content: space-between; align-items: center; }
+  .filter { font-size: 12px; }
+  .filter select { font-size: 12px; padding: 4px 8px; border: 1px solid #d6dce5; border-radius: 7px; background:#fff; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 10px 14px; text-align: right; white-space: nowrap; }
+  th:first-child, td:first-child, th:nth-child(2), td:nth-child(2), th:nth-child(3), td:nth-child(3) { text-align: left; }
+  thead th { background: #f8fafc; color: #56627a; font-weight: 600; font-size: 11px; text-transform: uppercase;
+    letter-spacing: .04em; cursor: pointer; user-select: none; border-bottom: 1px solid #e3e8ef; }
+  thead th:hover { color: #1a2233; }
+  thead th .arrow { color: #9aa3b2; font-size: 10px; margin-left: 4px; }
+  tbody tr { border-bottom: 1px solid #f0f2f6; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: #fafbfd; }
+  tbody tr.subtotal { background: #f4f7fb; font-weight: 600; }
+  .fundtag { display:inline-block; font-size:11px; color:#475067; background:#eef2f8; border-radius:6px; padding:2px 7px; }
+  .foot { margin-top: 22px; font-size: 12px; color: #6b7689; line-height: 1.6; }
+  .foot a { color: #1d6fd6; text-decoration: none; }
+  .foot a:hover { text-decoration: underline; }
+  .foot code { background:#eef1f5; padding:1px 5px; border-radius:5px; font-size:11px; }
+  @media (max-width: 760px){ .tiles{ grid-template-columns: repeat(2,1fr);} }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useMemo } = React;
+
+// ---- Point-in-time snapshot pulled from Investran SmartViews, as of 2026-03-31 ----
+// Holdings: report 33473 "Cost, Book, Multiple and IRR by Deal" (Direct Investments)
+// Investment date = month of first cashflow, from report 33484 "IRR Cash Flows"
+// MOIC = Fair Value / Cost. Gross IRR = report IRR @ Market Value.
+const HOLDINGS = [
+  { name: "Deal USD 2",       fund: "Benchmark Fund 1", invDate: "Sep 2000", invSort: "2000-09", cost: 22000, fv: 22000, irr: 0.0699, moic: 22000/22000 },
+  { name: "Deal USD",         fund: "Benchmark Fund 1", invDate: "Oct 2000", invSort: "2000-10", cost: 61000, fv: 61000, irr: -0.0061, moic: 61000/61000 },
+  { name: "Deal EUR",         fund: "Benchmark Fund 1", invDate: "Oct 2000", invSort: "2000-10", cost: 13330, fv: 5799,  irr: -0.0239, moic: 5799/13330 },
+  { name: "USD Company Deal", fund: "Benchmark Fund 2", invDate: "Jul 2004", invSort: "2004-07", cost: 12000, fv: 9000,  irr: 0.0179, moic: 9000/12000 },
+];
+
+// Fund-level pooled gross IRR (XIRR over all cashflows + terminal market value @ as-of):
+const FUND_IRR = { "Benchmark Fund 1": 0.0034, "Benchmark Fund 2": 0.0179, "All": 0.0045 };
+
+const usd = (n) => "$" + Math.round(n).toLocaleString("en-US");
+const pct = (n) => (n*100).toFixed(2) + "%";
+const moicFmt = (n) => n.toFixed(2) + "x";
+
+function Tile({ label, value, cls, note }) {
+  return (
+    <div className="tile">
+      <div className="label">{label}</div>
+      <div className={"value " + (cls||"")}>{value}</div>
+      {note && <div className="note">{note}</div>}
+    </div>
+  );
+}
+
+const COLS = [
+  { key: "name",    label: "Investment", type: "text" },
+  { key: "fund",    label: "Fund", type: "fund" },
+  { key: "invSort", label: "Investment Date", type: "date" },
+  { key: "cost",    label: "Cost", type: "money" },
+  { key: "fv",      label: "Fair Value", type: "money" },
+  { key: "irr",     label: "Gross IRR", type: "pct" },
+  { key: "moic",    label: "MOIC", type: "moic" },
+];
+
+function App() {
+  const [sortKey, setSortKey] = useState("fv");
+  const [sortDir, setSortDir] = useState("desc");
+  const [fund, setFund] = useState("All");
+
+  const rows = useMemo(() => {
+    let r = HOLDINGS.filter(h => fund === "All" || h.fund === fund);
+    r = [...r].sort((a, b) => {
+      let av = a[sortKey], bv = b[sortKey];
+      if (typeof av === "string") return sortDir==="asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+      return sortDir==="asc" ? av - bv : bv - av;
+    });
+    return r;
+  }, [sortKey, sortDir, fund]);
+
+  const totals = useMemo(() => {
+    const cost = rows.reduce((s,h)=>s+h.cost,0);
+    const fv = rows.reduce((s,h)=>s+h.fv,0);
+    return { cost, fv, moic: fv/cost, irr: FUND_IRR[fund] };
+  }, [rows, fund]);
+
+  const onSort = (k) => {
+    if (k === sortKey) setSortDir(d => d==="asc" ? "desc" : "asc");
+    else { setSortKey(k); setSortDir(k==="name"||k==="fund"||k==="invSort" ? "asc" : "desc"); }
+  };
+
+  const cell = (h, c) => {
+    if (c.type === "money") return usd(h[c.key]);
+    if (c.type === "pct") return <span className={h.irr>=0?"pos":"neg"}>{pct(h.irr)}</span>;
+    if (c.type === "moic") return <span className={h.moic>=1?"pos":"neg"}>{moicFmt(h.moic)}</span>;
+    if (c.type === "date") return h.invDate;
+    if (c.type === "fund") return <span className="fundtag">{h.fund.replace("Benchmark ","")}</span>;
+    return h[c.key];
+  };
+
+  return (
+    <div className="wrap">
+      <div className="head">
+        <h1>Schedule of Investments</h1>
+        <div className="sub">Benchmark Fund 1 &amp; 2 &nbsp;·&nbsp; As of March 31, 2026 &nbsp;·&nbsp; Source: Investran SmartViews</div>
+      </div>
+
+      <div className="tiles">
+        <Tile label="Total Cost" value={usd(totals.cost)} />
+        <Tile label="Total Fair Value" value={usd(totals.fv)} />
+        <Tile label="Fund-Level Gross IRR" value={pct(totals.irr)} cls={totals.irr>=0?"pos":"neg"}
+              note={fund==="All" ? "Pooled XIRR, both funds" : "Report IRR @ MV"} />
+        <Tile label="Fund-Level MOIC" value={moicFmt(totals.moic)} cls={totals.moic>=1?"pos":"neg"}
+              note="Fair Value ÷ Cost" />
+      </div>
+
+      <div className="panel">
+        <div className="ptitle">
+          <span>Holdings ({rows.length})</span>
+          <span className="filter">Fund:&nbsp;
+            <select value={fund} onChange={e=>setFund(e.target.value)}>
+              <option value="All">All (Both Funds)</option>
+              <option value="Benchmark Fund 1">Benchmark Fund 1</option>
+              <option value="Benchmark Fund 2">Benchmark Fund 2</option>
+            </select>
+          </span>
+        </div>
+        <table>
+          <thead>
+            <tr>{COLS.map(c => (
+              <th key={c.key} onClick={()=>onSort(c.key)}>
+                {c.label}<span className="arrow">{sortKey===c.key ? (sortDir==="asc"?"▲":"▼") : "↕"}</span>
+              </th>
+            ))}</tr>
+          </thead>
+          <tbody>
+            {rows.map((h,i) => (
+              <tr key={i}>{COLS.map(c => <td key={c.key}>{cell(h,c)}</td>)}</tr>
+            ))}
+            <tr className="subtotal">
+              <td>Total</td><td></td><td></td>
+              <td>{usd(totals.cost)}</td>
+              <td>{usd(totals.fv)}</td>
+              <td className={totals.irr>=0?"pos":"neg"}>{pct(totals.irr)}</td>
+              <td className={totals.moic>=1?"pos":"neg"}>{moicFmt(totals.moic)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div className="foot">
+        <p><strong>Underlying SmartViews report:</strong> <code>Cost, Book, Multiple and IRR by Deal</code>
+        — Report Wizard report ID <strong>33473</strong>, folder <em>Direct Investments</em>.<br/>
+        Open in Report Wizard: <a href="https://investranweb-livedev-us.fiscloudservices.com/api/ReportWizard/v1/reports/33473" target="_blank" rel="noopener">investranweb-livedev-us.fiscloudservices.com/api/ReportWizard/v1/reports/33473</a>
+        &nbsp;(parameters: Legal Entity, GL Date).</p>
+        <p><strong>Notes.</strong> Null and zero-value positions are excluded. Investment date = month of the first
+        cashflow per deal, from report <code>33484 "IRR Cash Flows"</code>. Cost = Cost, Current; Fair Value = Market Value;
+        Gross IRR = report IRR @ Market Value; MOIC = Fair Value ÷ Cost. The combined "All funds" Gross IRR is a pooled
+        XIRR across both funds' cashflows plus terminal market value at the as-of date.</p>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
